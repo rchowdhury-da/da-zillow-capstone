@@ -1,0 +1,121 @@
+module Test where 
+
+import Main
+import Daml.Script
+
+data LedgerParties = LedgerParties with
+    alice : Party
+    bob : Party
+    public : Party
+
+listingInfo = ListingInfo with address = "123 Main st"; bedrooms = 3; bathrooms = 2; square_feet = 800
+
+allocateParties : Script LedgerParties
+allocateParties = do
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  public <- allocateParty "public"
+  pure (LedgerParties alice bob public)
+
+initialize : LedgerParties -> Script HomeListingId
+initialize parties = do
+    
+    submit parties.alice do
+    createCmd HomeListing with
+      owner = parties.alice
+      info = listingInfo
+      ask_price = 1000000.00
+      public = parties.public
+
+-- Unhappy paths start
+testUnhappyPaths : Script ()
+
+testUnhappyPaths = script do
+
+  parties <- allocateParties
+
+  submitMustFail parties.alice do
+  createCmd HomeListing with
+    owner = parties.alice
+    info = listingInfo
+    ask_price = 0.0
+    public = parties.public
+
+testUnhappyPaths2 : Script ()
+
+testUnhappyPaths2 = script do
+
+  parties <- allocateParties
+
+  listingId <- initialize parties
+
+  submitMustFail parties.alice do
+    exerciseCmd listingId $ ChangeAskPrice 0.0
+
+  pure ()
+
+
+testUnhappyPaths3 : Script ()
+
+testUnhappyPaths3 = script do
+
+  parties <- allocateParties
+
+  listingId <- initialize parties
+
+  submitMustFail parties.bob do
+    exerciseCmd listingId $ SubmitOffer 0.0 parties.bob
+
+  pure ()
+
+-- Unhappy paths end
+
+
+-- happy paths start 
+
+
+testHappyPaths : Script ()
+
+testHappyPaths = script do
+
+  parties <- allocateParties
+
+  listingId <- initialize parties
+
+  submit parties.alice do
+    exerciseCmd listingId $ ChangeAskPrice 500.0
+
+  pure ()
+
+testHappyPaths2 : Script ()
+
+testHappyPaths2 = script do
+
+  parties <- allocateParties
+
+  listingId <- initialize parties
+
+  offerId <- submit parties.bob do
+    exerciseCmd listingId $ SubmitOffer 30000.0 parties.bob
+  
+  submit parties.alice do
+    exerciseCmd offerId $ RejectOffer
+
+  pure ()
+
+
+testHappyPaths3 : Script ()
+
+testHappyPaths3 = script do
+
+  parties <- allocateParties
+
+  listingId <- initialize parties
+
+  offerId <- submit parties.bob do
+    exerciseCmd listingId $ SubmitOffer 30000.0 parties.bob
+  
+  submit parties.alice do
+    exerciseCmd offerId $ AcceptOffer
+
+  pure ()

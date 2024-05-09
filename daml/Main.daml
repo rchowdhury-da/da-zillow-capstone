@@ -1,0 +1,88 @@
+module Main where
+
+type HomeListingId = ContractId HomeListing
+type ListingOfferId = ContractId ListingOffer
+type HomeSaleAgreementId = ContractId HomeSaleAgreement
+
+
+data ListingInfo = ListingInfo with
+  address : Text
+  bedrooms : Int
+  bathrooms : Int
+  square_feet : Int
+    deriving (Eq, Show)
+
+template HomeListing
+  with
+    owner  : Party
+    info  : ListingInfo
+    ask_price : Decimal
+    public : Party
+  where
+    ensure ask_price > 0.0
+    signatory owner
+    observer public
+
+    key (owner, info) : (Party, ListingInfo)
+    maintainer key._1
+
+    nonconsuming choice SubmitOffer : ListingOfferId
+      with
+        bid_price : Decimal
+        bidder : Party
+      controller public
+      do 
+      assertMsg "bid price must be greater than 0." (bid_price > 0.0)
+      create ListingOffer with
+        bidder = bidder
+        listing_owner = this.owner
+        listing_id = self
+        bid_price = bid_price
+
+
+    choice ChangeAskPrice : HomeListingId
+      with
+        new_ask_price : Decimal
+      controller owner
+      do 
+      assertMsg "ask price must be greater than 0." (new_ask_price > 0.0)
+      create this with ask_price = new_ask_price
+      
+
+template ListingOffer
+  with
+    bidder : Party
+    listing_owner : Party
+    listing_id : HomeListingId
+    bid_price : Decimal
+  where
+    ensure bid_price > 0.0 
+    signatory bidder
+    observer listing_owner, bidder
+    choice RejectOffer : ()
+      controller listing_owner
+      do 
+        archive self
+
+    choice CancelOffer : ()
+      controller bidder
+      do 
+        archive self
+
+    choice AcceptOffer : HomeSaleAgreementId
+      controller listing_owner
+      do 
+        archive listing_id
+        create HomeSaleAgreement
+          with listing_id = listing_id; previous_owner = listing_owner; new_owner = this.bidder; price = this.bid_price
+
+
+template HomeSaleAgreement
+  with
+    listing_id : HomeListingId
+    previous_owner : Party 
+    new_owner: Party
+    price : Decimal
+  where
+    signatory previous_owner
+    observer new_owner

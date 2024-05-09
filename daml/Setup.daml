@@ -1,0 +1,29 @@
+module Setup where 
+
+import Main
+import Daml.Script
+
+setup : Script ()
+setup = script do
+-- user_setup_begin
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+  public <- allocatePartyWithHint "public" (PartyIdHint "public")
+
+  createUser (User aliceId (Some alice)) [CanActAs alice]
+  createUser (User bobId (Some bob)) [CanActAs bob]
+-- user_setup_end
+
+  let listingInfo = ListingInfo with address = "123 Main st"; bedrooms = 3; bathrooms = 2; square_feet = 800
+
+  aliceListing <- submit alice do
+    createCmd HomeListing with
+      owner = alice
+      info = listingInfo
+      ask_price = 1000000.00
+      public = public
+
+
+  pure ()
