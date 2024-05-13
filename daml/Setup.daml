@@ -10,7 +10,6 @@ setup = script do
   bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
   aliceId <- validateUserId "alice"
   bobId <- validateUserId "bob"
-  public <- allocatePartyWithHint "public" (PartyIdHint "public")
 
   createUser (User aliceId (Some alice)) [CanActAs alice]
   createUser (User bobId (Some bob)) [CanActAs bob]
@@ -23,7 +22,8 @@ setup = script do
       owner = alice
       info = listingInfo
       ask_price = 1000000.00
-      public = public
+      observers = []
 
+  submit alice do exerciseCmd aliceListing $ ShareListing bob
 
   pure ()

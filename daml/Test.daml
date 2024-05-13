@@ -6,26 +6,86 @@ import Daml.Script
 data LedgerParties = LedgerParties with
     alice : Party
     bob : Party
-    public : Party
 
 listingInfo = ListingInfo with address = "123 Main st"; bedrooms = 3; bathrooms = 2; square_feet = 800
 
+bob_bid_price : Decimal
+bob_bid_price = 500000.00
+
+alice_ask_price : Decimal
+alice_ask_price = 1000000.00
+
 allocateParties : Script LedgerParties
 allocateParties = do
-  alice <- allocateParty "alice"
-  bob <- allocateParty "bob"
-  public <- allocateParty "public"
-  pure (LedgerParties alice bob public)
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "Bob")
+  aliceId <- validateUserId "alice"
+  bobId <- validateUserId "bob"
+
+  pure (LedgerParties alice bob)
+
 
 initialize : LedgerParties -> Script HomeListingId
 initialize parties = do
     
-    submit parties.alice do
-    createCmd HomeListing with
-      owner = parties.alice
-      info = listingInfo
-      ask_price = 1000000.00
-      public = parties.public
+    -- create listing
+    aliceListing <- submit parties.alice do
+      createCmd HomeListing with
+        owner = parties.alice
+        info = listingInfo
+        ask_price = alice_ask_price
+        observers = []
+
+    -- share listing with bob
+    submit parties.alice do exerciseCmd aliceListing $ ShareListing parties.bob
+
+-- full workflow test with using initialize
+
+full_workflow_test : Script ()
+full_workflow_test = script do
+  
+  -- initialize parties
+  parties <- allocateParties
+
+  -- initialize a homelisting for Alice and share with Bob
+  listingId <- initialize parties
+
+  -- submit offer by Bob
+  offerId <- submit parties.bob do
+    exerciseCmd listingId $ SubmitOffer bob_bid_price parties.bob
+
+  submit parties.alice do
+    exerciseCmd offerId $ AcceptOffer
+  
+  pure ()
+
+-- testing query contracts
+
+test_query_contracts : Script ()
+
+test_query_contracts = script do
+
+  -- initialize parties
+  parties <- allocateParties
+
+  -- initialize a homelisting and share with bob
+  listingId <- initialize parties
+
+  -- bob creates 2 offers 
+  offerId <- submit parties.bob do  
+    exerciseCmd listingId $ SubmitOffer 30000.0 parties.bob
+
+  offerId2 <- submit parties.bob do
+    exerciseCmd listingId $ SubmitOffer 500000.0 parties.bob
+
+  -- query contracts visible to alice
+  contracts <- query @ListingOffer parties.alice
+
+  assertMsg "Alice should have be able to view 2 contracts" (length contracts == 2) 
+
+  pure ()
+
+
 
 -- Unhappy paths start
 testUnhappyPaths : Script ()
@@ -34,12 +94,13 @@ testUnhappyPaths = script do
 
   parties <- allocateParties
 
+  -- homelisting with ask price not greater than 0.0
   submitMustFail parties.alice do
   createCmd HomeListing with
     owner = parties.alice
     info = listingInfo
     ask_price = 0.0
-    public = parties.public
+    observers = [parties.bob]
 
 testUnhappyPaths2 : Script ()
 
@@ -49,6 +110,7 @@ testUnhappyPaths2 = script do
 
   listingId <- initialize parties
 
+  -- changing ask price to a price not greater than 0.0
   submitMustFail parties.alice do
     exerciseCmd listingId $ ChangeAskPrice 0.0
 
@@ -63,6 +125,7 @@ testUnhappyPaths3 = script do
 
   listingId <- initialize parties
 
+  -- bob submitting an offer with bid_price that is not greater than 0.0
   submitMustFail parties.bob do
     exerciseCmd listingId $ SubmitOffer 0.0 parties.bob
 
@@ -119,3 +182,5 @@ testHappyPaths3 = script do
     exerciseCmd offerId $ AcceptOffer
 
   pure ()
+
+  -- happy path end

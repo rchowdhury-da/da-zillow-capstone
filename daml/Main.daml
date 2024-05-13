@@ -17,20 +17,28 @@ template HomeListing
     owner  : Party
     info  : ListingInfo
     ask_price : Decimal
-    public : Party
+    observers : [Party]
   where
     ensure ask_price > 0.0
     signatory owner
-    observer public
+    observer observers
 
     key (owner, info) : (Party, ListingInfo)
     maintainer key._1
+
+    choice ShareListing : HomeListingId
+      with
+        new_observer : Party
+      controller owner
+      do
+      let _observers = observers ++ [new_observer]
+      create this with observers = _observers
 
     nonconsuming choice SubmitOffer : ListingOfferId
       with
         bid_price : Decimal
         bidder : Party
-      controller public
+      controller bidder
       do 
       assertMsg "bid price must be greater than 0." (bid_price > 0.0)
       create ListingOffer with
@@ -38,7 +46,7 @@ template HomeListing
         listing_owner = this.owner
         listing_id = self
         bid_price = bid_price
-
+        
 
     choice ChangeAskPrice : HomeListingId
       with
@@ -59,12 +67,13 @@ template ListingOffer
     ensure bid_price > 0.0 
     signatory bidder
     observer listing_owner, bidder
-    choice RejectOffer : ()
+
+    nonconsuming choice RejectOffer : ()
       controller listing_owner
       do 
         archive self
 
-    choice CancelOffer : ()
+    nonconsuming choice CancelOffer : ()
       controller bidder
       do 
         archive self
